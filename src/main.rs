@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 use teloxide::prelude::*;
-use tnt_delivery_bot::bot::{build_handler, AppState};
+use tnt_delivery_bot::bot::{AppState, build_handler};
 use tnt_delivery_bot::config::Config;
 use tnt_delivery_bot::db::spawn_db_actor;
 use tnt_delivery_bot::fetch::ReqwestFetcher;
@@ -39,8 +39,7 @@ async fn main() -> anyhow::Result<()> {
         let cancel = cancel.clone();
         tokio::spawn(async move {
             let mut tick: u64 = 0;
-            let mut interval =
-                tokio::time::interval(Duration::from_secs(cfg.tick_seconds));
+            let mut interval = tokio::time::interval(Duration::from_secs(cfg.tick_seconds));
             loop {
                 tokio::select! {
                     _ = cancel.cancelled() => break,
@@ -92,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
 
 #[cfg(unix)]
 async fn wait_for_signal() {
-    use tokio::signal::unix::{signal, SignalKind};
+    use tokio::signal::unix::{SignalKind, signal};
     let mut term = signal(SignalKind::terminate()).expect("SIGTERM");
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {},

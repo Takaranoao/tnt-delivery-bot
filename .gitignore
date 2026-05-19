@@ -24,3 +24,7 @@ target
 *.sqlite
 *.sqlite-*
 .env
+
+# Docker deploy runtime artifacts (make up / make backup)
+data/
+backups/

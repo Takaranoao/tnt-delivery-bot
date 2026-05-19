@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 use std::sync::Arc;
-use tnt_delivery_bot::bot::{handle_token, AppState};
+use tnt_delivery_bot::bot::{AppState, handle_token};
 use tnt_delivery_bot::config::Config;
-use tnt_delivery_bot::db::{spawn_db_actor, UnsubResult};
+use tnt_delivery_bot::db::{UnsubResult, spawn_db_actor};
 use tnt_delivery_bot::fetch::fake::FakeFetcher;
 use tnt_delivery_bot::notify::fake::FakeNotifier;
 use tnt_delivery_bot::schedule::slot;
@@ -50,7 +50,10 @@ async fn join_poll_diff_unsubscribe_end_to_end() {
         r#"{"err":0,"result":{"order_id":"OID9","status":"PROCESS"}}"#,
     );
     let reply = handle_token(&state, 1, 1001, "TK").await;
-    assert!(reply.contains("已加入追踪 OID9"), "join receipt was: {reply}");
+    assert!(
+        reply.contains("已加入追踪 OID9"),
+        "join receipt was: {reply}"
+    );
     assert!(db.is_subscribed(1, "TK".into()).await.unwrap());
 
     // User 2 joins the same (shared) token; fetch still PROCESS.
@@ -69,7 +72,10 @@ async fn join_poll_diff_unsubscribe_end_to_end() {
     // (chosen randomly inside handle_token) to compute a guaranteed-due tick.
     let rows = db.due_tokens().await.unwrap();
     assert_eq!(rows.len(), 1);
-    assert!(rows[0].last_snapshot.is_some(), "first snapshot stored at join");
+    assert!(
+        rows[0].last_snapshot.is_some(),
+        "first snapshot stored at join"
+    );
     let rand = rows[0].rand;
     let t = slot("TK", rand, c.poll_period_ticks);
 
@@ -87,7 +93,10 @@ async fn join_poll_diff_unsubscribe_end_to_end() {
         assert_eq!(sent.len(), 2, "both subscribers notified");
         let chats: HashSet<i64> = sent.iter().map(|(ch, _)| *ch).collect();
         assert_eq!(chats, HashSet::from([1001, 1002]));
-        assert!(sent.iter().all(|(_, m)| m.contains("状态: PROCESS → DELIVERED")));
+        assert!(
+            sent.iter()
+                .all(|(_, m)| m.contains("状态: PROCESS → DELIVERED"))
+        );
     }
 
     // User 1 stops; token remains tracked for user 2.
@@ -105,9 +114,15 @@ async fn join_poll_diff_unsubscribe_end_to_end() {
         "TK",
         r#"{"err":0,"result":{"order_id":"OID9","status":"COMPLETED"}}"#,
     );
-    run_tick_round(t + c.poll_period_ticks, &c, &db, fetcher.as_ref(), &notifier2)
-        .await
-        .unwrap();
+    run_tick_round(
+        t + c.poll_period_ticks,
+        &c,
+        &db,
+        fetcher.as_ref(),
+        &notifier2,
+    )
+    .await
+    .unwrap();
     {
         let sent = notifier2.sent.lock().unwrap();
         assert_eq!(sent.len(), 2);

@@ -1,0 +1,16 @@
+target/
+.git/
+.github/
+data/
+backups/
+.env
+.env.example
+docs/
+.idea/
+.vscode/
+.claude/
+.worktrees/
+tests/
+*.sqlite
+*.sqlite-*
+.DS_Store

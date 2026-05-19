@@ -23,8 +23,7 @@ fn parse_env<T: std::str::FromStr>(key: &str, default: T) -> Result<T> {
 
 impl Config {
     pub fn from_env() -> Result<Self> {
-        let bot_token = std::env::var("BOT_TOKEN")
-            .context("BOT_TOKEN is required")?;
+        let bot_token = std::env::var("BOT_TOKEN").context("BOT_TOKEN is required")?;
         if bot_token.trim().is_empty() {
             anyhow::bail!("BOT_TOKEN is empty");
         }
@@ -36,9 +35,8 @@ impl Config {
             poll_period_ticks: parse_env("POLL_PERIOD_TICKS", 12u64)?,
             token_ttl_hours: parse_env("TOKEN_TTL_HOURS", 24i64)?,
             max_fetch_failures: parse_env("MAX_FETCH_FAILURES", 5i64)?,
-            api_base: std::env::var("API_BASE").unwrap_or_else(|_| {
-                "https://tmsapi.tntsupermarket.us/track/customer".to_string()
-            }),
+            api_base: std::env::var("API_BASE")
+                .unwrap_or_else(|_| "https://tmsapi.tntsupermarket.us/track/customer".to_string()),
             http_proxy: std::env::var("HTTP_PROXY").ok().filter(|s| !s.is_empty()),
         };
         if cfg.tick_seconds == 0 {

@@ -139,7 +139,16 @@ impl DbHandle {
         rand: i64,
         now: i64,
     ) -> Result<AddResult> {
-        call!(self, AddSubscription { user_id, chat_id, token, rand, now })
+        call!(
+            self,
+            AddSubscription {
+                user_id,
+                chat_id,
+                token,
+                rand,
+                now
+            }
+        )
     }
     pub async fn is_subscribed(&self, user_id: i64, token: String) -> Result<bool> {
         call!(self, IsSubscribed { user_id, token })
@@ -153,7 +162,14 @@ impl DbHandle {
         snapshot: String,
         now: i64,
     ) -> Result<()> {
-        call!(self, RecordPollSuccess { token, snapshot, now })
+        call!(
+            self,
+            RecordPollSuccess {
+                token,
+                snapshot,
+                now
+            }
+        )
     }
     pub async fn store_snapshot_if_null(
         &self,
@@ -161,7 +177,14 @@ impl DbHandle {
         snapshot: String,
         now: i64,
     ) -> Result<()> {
-        call!(self, StoreSnapshotIfNull { token, snapshot, now })
+        call!(
+            self,
+            StoreSnapshotIfNull {
+                token,
+                snapshot,
+                now
+            }
+        )
     }
     pub async fn record_poll_failure(&self, token: String, now: i64) -> Result<i64> {
         call!(self, RecordPollFailure { token, now })
@@ -192,8 +215,7 @@ fn order_id_from_snapshot(snap: &Option<String>) -> Option<String> {
 }
 
 fn subscribers_of(conn: &Connection, token: &str) -> Result<Vec<(i64, i64)>> {
-    let mut stmt =
-        conn.prepare("SELECT user_id, chat_id FROM subscriptions WHERE token = ?1")?;
+    let mut stmt = conn.prepare("SELECT user_id, chat_id FROM subscriptions WHERE token = ?1")?;
     let rows = stmt
         .query_map([token], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?)))?
         .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -202,7 +224,14 @@ fn subscribers_of(conn: &Connection, token: &str) -> Result<Vec<(i64, i64)>> {
 
 fn handle(conn: &Connection, cmd: DbCmd) {
     match cmd {
-        DbCmd::AddSubscription { user_id, chat_id, token, rand, now, resp } => {
+        DbCmd::AddSubscription {
+            user_id,
+            chat_id,
+            token,
+            rand,
+            now,
+            resp,
+        } => {
             let r = (|| -> Result<AddResult> {
                 conn.execute(
                     "INSERT INTO tokens(token, rand, created_at) VALUES(?1, ?2, ?3)
@@ -227,7 +256,11 @@ fn handle(conn: &Connection, cmd: DbCmd) {
             })();
             let _ = resp.send(r);
         }
-        DbCmd::IsSubscribed { user_id, token, resp } => {
+        DbCmd::IsSubscribed {
+            user_id,
+            token,
+            resp,
+        } => {
             let r = conn
                 .query_row(
                     "SELECT 1 FROM subscriptions WHERE user_id = ?1 AND token = ?2",
@@ -244,8 +277,7 @@ fn handle(conn: &Connection, cmd: DbCmd) {
         }
         DbCmd::DueTokens { resp } => {
             let r = (|| -> Result<Vec<TokenRow>> {
-                let mut stmt =
-                    conn.prepare("SELECT token, rand, last_snapshot FROM tokens")?;
+                let mut stmt = conn.prepare("SELECT token, rand, last_snapshot FROM tokens")?;
                 let rows = stmt
                     .query_map([], |r| {
                         Ok(TokenRow {
@@ -259,7 +291,12 @@ fn handle(conn: &Connection, cmd: DbCmd) {
             })();
             let _ = resp.send(r);
         }
-        DbCmd::RecordPollSuccess { token, snapshot, now, resp } => {
+        DbCmd::RecordPollSuccess {
+            token,
+            snapshot,
+            now,
+            resp,
+        } => {
             let r = conn
                 .execute(
                     "UPDATE tokens SET last_snapshot = ?2, last_polled_at = ?3, fail_count = 0
@@ -270,7 +307,12 @@ fn handle(conn: &Connection, cmd: DbCmd) {
                 .map_err(anyhow::Error::from);
             let _ = resp.send(r);
         }
-        DbCmd::StoreSnapshotIfNull { token, snapshot, now, resp } => {
+        DbCmd::StoreSnapshotIfNull {
+            token,
+            snapshot,
+            now,
+            resp,
+        } => {
             let r = conn
                 .execute(
                     "UPDATE tokens SET last_snapshot = ?2, last_polled_at = ?3, fail_count = 0
@@ -311,7 +353,11 @@ fn handle(conn: &Connection, cmd: DbCmd) {
             })();
             let _ = resp.send(r);
         }
-        DbCmd::ExpireSweep { now, ttl_hours, resp } => {
+        DbCmd::ExpireSweep {
+            now,
+            ttl_hours,
+            resp,
+        } => {
             let r = (|| -> Result<Vec<ExpiredToken>> {
                 let cutoff = now - ttl_hours * 3600;
                 let rows = {
@@ -330,7 +376,11 @@ fn handle(conn: &Connection, cmd: DbCmd) {
                     let order_id = order_id_from_snapshot(&snap);
                     // subscriptions rows cascade away via ON DELETE CASCADE.
                     tx.execute("DELETE FROM tokens WHERE token = ?1", [&token])?;
-                    out.push(ExpiredToken { token, order_id, subscribers });
+                    out.push(ExpiredToken {
+                        token,
+                        order_id,
+                        subscribers,
+                    });
                 }
                 tx.commit()?;
                 Ok(out)
@@ -357,7 +407,11 @@ fn handle(conn: &Connection, cmd: DbCmd) {
             })();
             let _ = resp.send(r);
         }
-        DbCmd::Unsubscribe { user_id, token, resp } => {
+        DbCmd::Unsubscribe {
+            user_id,
+            token,
+            resp,
+        } => {
             let r = (|| -> Result<UnsubResult> {
                 let removed = conn.execute(
                     "DELETE FROM subscriptions WHERE user_id = ?1 AND token = ?2",
@@ -384,7 +438,11 @@ fn handle(conn: &Connection, cmd: DbCmd) {
 /// Open the DB, run migrations, spawn the actor task. Returns a cloneable handle.
 pub fn spawn_db_actor(db_path: &str) -> Result<DbHandle> {
     let conn = Connection::open(db_path)?;
-    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    // journal_mode is persisted in the DB header, so this single startup
+    // connection sets WAL once for the file. WAL keeps the DB consistent
+    // for hot copies / `sqlite3 .backup` and survives crashes better.
+    // (execute_batch uses sqlite3_exec, which discards the row WAL returns.)
+    conn.execute_batch("PRAGMA journal_mode = WAL;\nPRAGMA foreign_keys = ON;")?;
     conn.execute_batch(MIGRATION)?;
     let (tx, mut rx) = mpsc::channel::<DbCmd>(256);
     tokio::spawn(async move {

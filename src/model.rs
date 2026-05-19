@@ -105,10 +105,7 @@ pub fn render_status(result: &Value) -> String {
 
 /// One-line summary for `/list`.
 pub fn render_summary(result: &Value) -> String {
-    let status = result
-        .get("status")
-        .and_then(|v| v.as_str())
-        .unwrap_or("?");
+    let status = result.get("status").and_then(|v| v.as_str()).unwrap_or("?");
     format!("{} · {}", order_id_of(result), status)
 }
 
@@ -132,7 +129,8 @@ mod tests {
 
     #[test]
     fn parse_real_response() {
-        let raw = r#"{"err":0,"msg":"","result":{"order_id":"000039752","status":"PROCESS","stop":99}}"#;
+        let raw =
+            r#"{"err":0,"msg":"","result":{"order_id":"000039752","status":"PROCESS","stop":99}}"#;
         let r: ApiResponse = serde_json::from_str(raw).unwrap();
         assert_eq!(r.err, 0);
         let res = r.result.unwrap();
@@ -164,9 +162,21 @@ mod tests {
         assert_eq!(
             d,
             vec![
-                FieldChange { key: "added".into(), old: None, new: Some(json!("x")) },
-                FieldChange { key: "gone".into(), old: Some(json!(1)), new: None },
-                FieldChange { key: "status".into(), old: Some(json!("PROCESS")), new: Some(json!("DELIVERED")) },
+                FieldChange {
+                    key: "added".into(),
+                    old: None,
+                    new: Some(json!("x"))
+                },
+                FieldChange {
+                    key: "gone".into(),
+                    old: Some(json!(1)),
+                    new: None
+                },
+                FieldChange {
+                    key: "status".into(),
+                    old: Some(json!("PROCESS")),
+                    new: Some(json!("DELIVERED"))
+                },
             ]
         );
     }

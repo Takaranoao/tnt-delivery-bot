@@ -53,12 +53,7 @@ async fn broadcast_and_purge(state: &AppState, token: &str, except_user: i64, ms
 
 /// Decide and perform the join flow for a parsed token. Returns the reply text.
 /// Pure of teloxide so it is unit-testable.
-pub async fn handle_token(
-    state: &AppState,
-    user_id: i64,
-    chat_id: i64,
-    token: &str,
-) -> String {
+pub async fn handle_token(state: &AppState, user_id: i64, chat_id: i64, token: &str) -> String {
     let now = now_ts();
     match state.fetcher.fetch(token).await {
         Ok(resp) if resp.err == 0 && resp.result.is_some() => {
@@ -74,8 +69,7 @@ pub async fn handle_token(
                         .get("order_id")
                         .and_then(|v| v.as_str())
                         .unwrap_or(token);
-                    let msg =
-                        format!("⚠️ 订单 {oid} 状态为 UNKNOWN(token 可能已失效)，已停止追踪");
+                    let msg = format!("⚠️ 订单 {oid} 状态为 UNKNOWN(token 可能已失效)，已停止追踪");
                     broadcast_and_purge(state, token, user_id, &msg).await;
                     return msg;
                 }
@@ -100,7 +94,13 @@ pub async fn handle_token(
             }
             match state
                 .db
-                .add_subscription(user_id, chat_id, token.to_string(), rand::random::<i64>(), now)
+                .add_subscription(
+                    user_id,
+                    chat_id,
+                    token.to_string(),
+                    rand::random::<i64>(),
+                    now,
+                )
                 .await
             {
                 Ok(AddResult::Added { snapshot }) => {
@@ -128,10 +128,7 @@ pub async fn handle_token(
                 .await
             {
                 Ok(_) => {
-                    let _ = state
-                        .db
-                        .record_poll_failure(token.to_string(), now)
-                        .await;
+                    let _ = state.db.record_poll_failure(token.to_string(), now).await;
                     format!(
                         "已加入追踪，但当前查询失败，将自动重试;连续失败 {} 次后停止",
                         state.cfg.max_fetch_failures
@@ -143,12 +140,7 @@ pub async fn handle_token(
     }
 }
 
-async fn on_command(
-    bot: Bot,
-    msg: Message,
-    cmd: Command,
-    state: AppState,
-) -> ResponseResult<()> {
+async fn on_command(bot: Bot, msg: Message, cmd: Command, state: AppState) -> ResponseResult<()> {
     let uid = msg.from.as_ref().map(|u| u.id.0 as i64).unwrap_or(0);
     let text = match cmd {
         Command::Start | Command::Help => HELP.to_string(),
@@ -166,8 +158,7 @@ async fn on_command(
                         .and_then(|j| serde_json::from_str::<serde_json::Value>(j).ok())
                         .map(|v| render_summary(&v))
                         .unwrap_or_else(|| "(尚无状态)".to_string());
-                    let remain_h =
-                        state.cfg.token_ttl_hours - (now - r.created_at) / 3600;
+                    let remain_h = state.cfg.token_ttl_hours - (now - r.created_at) / 3600;
                     s.push_str(&format!(
                         "• {} · {} · 剩余~{}h\n",
                         r.token,
@@ -252,7 +243,10 @@ mod tests {
     #[tokio::test]
     async fn unknown_status_is_rejected_when_not_subscribed() {
         let f = FakeFetcher::new();
-        f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"UNKNOWN"}}"#);
+        f.push_ok(
+            "tok",
+            r#"{"err":0,"result":{"order_id":"O","status":"UNKNOWN"}}"#,
+        );
         let (st, _n) = state(f);
         let reply = handle_token(&st, 1, 1, "tok").await;
         assert!(reply.contains("未加入追踪"));
@@ -262,7 +256,10 @@ mod tests {
     #[tokio::test]
     async fn completed_status_is_rejected_when_not_subscribed() {
         let f = FakeFetcher::new();
-        f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"COMPLETED"}}"#);
+        f.push_ok(
+            "tok",
+            r#"{"err":0,"result":{"order_id":"O","status":"COMPLETED"}}"#,
+        );
         let (st, _n) = state(f);
         let reply = handle_token(&st, 1, 1, "tok").await;
         assert!(reply.contains("已完成"));
@@ -301,9 +298,18 @@ mod tests {
         let f = FakeFetcher::new();
         // user A (chat 10) and user B (chat 20) both join while PROCESS, then A
         // re-sends and the order is now COMPLETED.
-        f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"PROCESS"}}"#);
-        f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"PROCESS"}}"#);
-        f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"COMPLETED"}}"#);
+        f.push_ok(
+            "tok",
+            r#"{"err":0,"result":{"order_id":"O","status":"PROCESS"}}"#,
+        );
+        f.push_ok(
+            "tok",
+            r#"{"err":0,"result":{"order_id":"O","status":"PROCESS"}}"#,
+        );
+        f.push_ok(
+            "tok",
+            r#"{"err":0,"result":{"order_id":"O","status":"COMPLETED"}}"#,
+        );
         let (st, n) = state(f);
         handle_token(&st, 1, 10, "tok").await;
         handle_token(&st, 2, 20, "tok").await;
@@ -325,9 +331,18 @@ mod tests {
     #[tokio::test]
     async fn unknown_status_when_subscribed_broadcasts_and_purges() {
         let f = FakeFetcher::new();
-        f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"PROCESS"}}"#);
-        f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"PROCESS"}}"#);
-        f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"UNKNOWN"}}"#);
+        f.push_ok(
+            "tok",
+            r#"{"err":0,"result":{"order_id":"O","status":"PROCESS"}}"#,
+        );
+        f.push_ok(
+            "tok",
+            r#"{"err":0,"result":{"order_id":"O","status":"PROCESS"}}"#,
+        );
+        f.push_ok(
+            "tok",
+            r#"{"err":0,"result":{"order_id":"O","status":"UNKNOWN"}}"#,
+        );
         let (st, n) = state(f);
         handle_token(&st, 1, 10, "tok").await;
         handle_token(&st, 2, 20, "tok").await;
