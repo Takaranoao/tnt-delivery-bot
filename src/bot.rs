@@ -2,6 +2,7 @@ use crate::config::Config;
 use crate::db::{AddResult, DbHandle, UnsubResult};
 use crate::fetch::ApiFetcher;
 use crate::model::{is_completed_status, is_unknown_status, render_status, render_summary};
+use crate::notify::Notifier;
 use crate::token_parse::parse_token;
 use std::sync::Arc;
 use teloxide::prelude::*;
@@ -21,6 +22,7 @@ pub struct AppState {
     pub db: DbHandle,
     pub fetcher: Arc<dyn ApiFetcher>,
     pub cfg: Arc<Config>,
+    pub notifier: Arc<dyn Notifier>,
 }
 
 const HELP: &str = "发我 T&T 配送 token 或追踪链接即可开始追踪，例如:\n\
@@ -31,6 +33,22 @@ const HELP: &str = "发我 T&T 配送 token 或追踪链接即可开始追踪，
 
 fn now_ts() -> i64 {
     chrono::Utc::now().timestamp()
+}
+
+/// A re-sent token turned out to be in a terminal state (UNKNOWN/COMPLETED):
+/// the token's status is shared, so stop tracking it for everyone. Notify every
+/// other subscriber, then purge. The re-sender is skipped here because the caller
+/// returns the same text as the command reply (otherwise they'd get it twice).
+async fn broadcast_and_purge(state: &AppState, token: &str, except_user: i64, msg: &str) {
+    if let Ok(subs) = state.db.subscribers(token.to_string()).await {
+        for (uid, chat) in subs {
+            if uid == except_user {
+                continue;
+            }
+            let _ = state.notifier.send(chat, msg).await;
+        }
+    }
+    let _ = state.db.purge_token(token.to_string()).await;
 }
 
 /// Decide and perform the join flow for a parsed token. Returns the reply text.
@@ -46,22 +64,38 @@ pub async fn handle_token(
         Ok(resp) if resp.err == 0 && resp.result.is_some() => {
             let result = resp.result.unwrap();
             if is_unknown_status(&result) {
-                // Exception: existing subscriber keeps subscription, gets status.
                 let subbed = state
                     .db
                     .is_subscribed(user_id, token.to_string())
                     .await
                     .unwrap_or(false);
                 if subbed {
-                    return format!("你已在追踪，当前状态如下\n{}", render_status(&result));
+                    let oid = result
+                        .get("order_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(token);
+                    let msg =
+                        format!("⚠️ 订单 {oid} 状态为 UNKNOWN(token 可能已失效)，已停止追踪");
+                    broadcast_and_purge(state, token, user_id, &msg).await;
+                    return msg;
                 }
                 return "⚠️ 该订单当前状态为 UNKNOWN(可能 token 无效或订单尚未生成)，未加入追踪;请确认 token 或稍后重试".to_string();
             }
             if is_completed_status(&result) {
+                let subbed = state
+                    .db
+                    .is_subscribed(user_id, token.to_string())
+                    .await
+                    .unwrap_or(false);
                 let oid = result
                     .get("order_id")
                     .and_then(|v| v.as_str())
                     .unwrap_or(token);
+                if subbed {
+                    let msg = format!("✅ 订单 {oid} 已完成，停止追踪");
+                    broadcast_and_purge(state, token, user_id, &msg).await;
+                    return msg;
+                }
                 return format!("✅ 订单 {oid} 已完成（状态: COMPLETED），未加入追踪");
             }
             match state
@@ -189,13 +223,15 @@ pub fn build_handler() -> teloxide::dispatching::UpdateHandler<teloxide::Request
 mod tests {
     use super::*;
     use crate::fetch::fake::FakeFetcher;
+    use crate::notify::fake::FakeNotifier;
 
-    fn state(fetcher: FakeFetcher) -> AppState {
+    fn state(fetcher: FakeFetcher) -> (AppState, Arc<FakeNotifier>) {
         // in-memory-ish: use a temp file db.
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("t.sqlite").to_string_lossy().to_string();
         std::mem::forget(dir); // keep file alive for the test process
-        AppState {
+        let notifier = Arc::new(FakeNotifier::new());
+        let st = AppState {
             db: crate::db::spawn_db_actor(&p).unwrap(),
             fetcher: Arc::new(fetcher),
             cfg: Arc::new(Config {
@@ -208,14 +244,16 @@ mod tests {
                 api_base: "http://unused".into(),
                 http_proxy: None,
             }),
-        }
+            notifier: notifier.clone(),
+        };
+        (st, notifier)
     }
 
     #[tokio::test]
     async fn unknown_status_is_rejected_when_not_subscribed() {
         let f = FakeFetcher::new();
         f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"UNKNOWN"}}"#);
-        let st = state(f);
+        let (st, _n) = state(f);
         let reply = handle_token(&st, 1, 1, "tok").await;
         assert!(reply.contains("未加入追踪"));
         assert!(!st.db.is_subscribed(1, "tok".into()).await.unwrap());
@@ -225,7 +263,7 @@ mod tests {
     async fn completed_status_is_rejected_when_not_subscribed() {
         let f = FakeFetcher::new();
         f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"COMPLETED"}}"#);
-        let st = state(f);
+        let (st, _n) = state(f);
         let reply = handle_token(&st, 1, 1, "tok").await;
         assert!(reply.contains("已完成"));
         assert!(reply.contains("未加入追踪"));
@@ -239,7 +277,7 @@ mod tests {
             "tok",
             r#"{"err":0,"result":{"order_id":"O","status":"PROCESS"}}"#,
         );
-        let st = state(f);
+        let (st, _n) = state(f);
         let reply = handle_token(&st, 1, 1, "tok").await;
         assert!(reply.contains("已加入追踪 O"));
         assert!(st.db.is_subscribed(1, "tok".into()).await.unwrap());
@@ -252,9 +290,57 @@ mod tests {
     async fn fetch_failure_still_subscribes() {
         let f = FakeFetcher::new();
         f.push_err("tok", "down");
-        let st = state(f);
+        let (st, _n) = state(f);
         let reply = handle_token(&st, 1, 1, "tok").await;
         assert!(reply.contains("将自动重试"));
         assert!(st.db.is_subscribed(1, "tok".into()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn completed_status_when_subscribed_broadcasts_and_purges() {
+        let f = FakeFetcher::new();
+        // user A (chat 10) and user B (chat 20) both join while PROCESS, then A
+        // re-sends and the order is now COMPLETED.
+        f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"PROCESS"}}"#);
+        f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"PROCESS"}}"#);
+        f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"COMPLETED"}}"#);
+        let (st, n) = state(f);
+        handle_token(&st, 1, 10, "tok").await;
+        handle_token(&st, 2, 20, "tok").await;
+        assert!(st.db.is_subscribed(1, "tok".into()).await.unwrap());
+        assert!(st.db.is_subscribed(2, "tok".into()).await.unwrap());
+
+        let reply = handle_token(&st, 1, 10, "tok").await;
+        assert!(reply.contains("已完成") && reply.contains("停止追踪"));
+        // Token purged for everyone.
+        assert!(!st.db.is_subscribed(1, "tok".into()).await.unwrap());
+        assert!(!st.db.is_subscribed(2, "tok".into()).await.unwrap());
+        assert!(st.db.due_tokens().await.unwrap().is_empty());
+        // Other subscriber (chat 20) broadcast; re-sender (chat 10) not double-notified.
+        let sent = n.sent.lock().unwrap();
+        assert!(sent.iter().any(|(c, _)| *c == 20));
+        assert!(!sent.iter().any(|(c, _)| *c == 10));
+    }
+
+    #[tokio::test]
+    async fn unknown_status_when_subscribed_broadcasts_and_purges() {
+        let f = FakeFetcher::new();
+        f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"PROCESS"}}"#);
+        f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"PROCESS"}}"#);
+        f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"UNKNOWN"}}"#);
+        let (st, n) = state(f);
+        handle_token(&st, 1, 10, "tok").await;
+        handle_token(&st, 2, 20, "tok").await;
+        assert!(st.db.is_subscribed(1, "tok".into()).await.unwrap());
+        assert!(st.db.is_subscribed(2, "tok".into()).await.unwrap());
+
+        let reply = handle_token(&st, 1, 10, "tok").await;
+        assert!(reply.contains("UNKNOWN") && reply.contains("已停止追踪"));
+        assert!(!st.db.is_subscribed(1, "tok".into()).await.unwrap());
+        assert!(!st.db.is_subscribed(2, "tok".into()).await.unwrap());
+        assert!(st.db.due_tokens().await.unwrap().is_empty());
+        let sent = n.sent.lock().unwrap();
+        assert!(sent.iter().any(|(c, _)| *c == 20));
+        assert!(!sent.iter().any(|(c, _)| *c == 10));
     }
 }

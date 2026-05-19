@@ -302,8 +302,11 @@ fn handle(conn: &Connection, cmd: DbCmd) {
         }
         DbCmd::PurgeToken { token, resp } => {
             let r = (|| -> Result<()> {
-                conn.execute("DELETE FROM subscriptions WHERE token = ?1", [&token])?;
-                conn.execute("DELETE FROM tokens WHERE token = ?1", [&token])?;
+                let tx = conn.unchecked_transaction()?;
+                // subscriptions rows cascade away (PRAGMA foreign_keys = ON +
+                // subscriptions.token REFERENCES tokens(token) ON DELETE CASCADE).
+                tx.execute("DELETE FROM tokens WHERE token = ?1", [&token])?;
+                tx.commit()?;
                 Ok(())
             })();
             let _ = resp.send(r);
@@ -311,22 +314,25 @@ fn handle(conn: &Connection, cmd: DbCmd) {
         DbCmd::ExpireSweep { now, ttl_hours, resp } => {
             let r = (|| -> Result<Vec<ExpiredToken>> {
                 let cutoff = now - ttl_hours * 3600;
-                let mut stmt = conn.prepare(
-                    "SELECT token, last_snapshot FROM tokens WHERE created_at <= ?1",
-                )?;
-                let rows = stmt
-                    .query_map([cutoff], |r| {
+                let rows = {
+                    let mut stmt = conn.prepare(
+                        "SELECT token, last_snapshot FROM tokens WHERE created_at <= ?1",
+                    )?;
+                    stmt.query_map([cutoff], |r| {
                         Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
                     })?
-                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                    .collect::<rusqlite::Result<Vec<_>>>()?
+                };
+                let tx = conn.unchecked_transaction()?;
                 let mut out = Vec::new();
                 for (token, snap) in rows {
-                    let subscribers = subscribers_of(conn, &token)?;
+                    let subscribers = subscribers_of(&tx, &token)?;
                     let order_id = order_id_from_snapshot(&snap);
-                    conn.execute("DELETE FROM subscriptions WHERE token = ?1", [&token])?;
-                    conn.execute("DELETE FROM tokens WHERE token = ?1", [&token])?;
+                    // subscriptions rows cascade away via ON DELETE CASCADE.
+                    tx.execute("DELETE FROM tokens WHERE token = ?1", [&token])?;
                     out.push(ExpiredToken { token, order_id, subscribers });
                 }
+                tx.commit()?;
                 Ok(out)
             })();
             let _ = resp.send(r);

@@ -5,7 +5,7 @@ use tnt_delivery_bot::bot::{build_handler, AppState};
 use tnt_delivery_bot::config::Config;
 use tnt_delivery_bot::db::spawn_db_actor;
 use tnt_delivery_bot::fetch::ReqwestFetcher;
-use tnt_delivery_bot::notify::TeloxideNotifier;
+use tnt_delivery_bot::notify::{Notifier, TeloxideNotifier};
 use tnt_delivery_bot::tick::run_tick_round;
 use tokio_util::sync::CancellationToken;
 
@@ -62,6 +62,7 @@ async fn main() -> anyhow::Result<()> {
         db: db.clone(),
         fetcher: fetcher.clone(),
         cfg: cfg.clone(),
+        notifier: Arc::new(TeloxideNotifier::new(bot.clone())) as Arc<dyn Notifier>,
     };
 
     let mut dispatcher = Dispatcher::builder(bot, build_handler())
@@ -77,7 +78,9 @@ async fn main() -> anyhow::Result<()> {
             wait_for_signal().await;
             log::info!("shutdown signal received");
             cancel.cancel();
-            let _ = shutdown.shutdown();
+            if let Err(e) = shutdown.shutdown() {
+                log::warn!("shutdown trigger failed: {e:?}");
+            }
         });
     }
 

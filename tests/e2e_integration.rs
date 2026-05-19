@@ -41,6 +41,7 @@ async fn join_poll_diff_unsubscribe_end_to_end() {
         db: db.clone(),
         fetcher: fetcher.clone(),
         cfg: Arc::new(c.clone()),
+        notifier: Arc::new(FakeNotifier::new()),
     };
 
     // User 1 joins via a real token message; first fetch = PROCESS.
@@ -134,6 +135,7 @@ async fn join_then_repeated_failure_purges_end_to_end() {
         db: db.clone(),
         fetcher: fetcher.clone(),
         cfg: Arc::new(c.clone()),
+        notifier: Arc::new(FakeNotifier::new()),
     };
 
     // Join while the API is down: still subscribes, records failure #1.
