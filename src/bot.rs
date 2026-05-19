@@ -169,7 +169,6 @@ async fn on_text(bot: Bot, msg: Message, state: AppState) -> ResponseResult<()> 
 }
 
 pub fn build_handler() -> teloxide::dispatching::UpdateHandler<teloxide::RequestError> {
-    use dptree::case;
     Update::filter_message()
         .branch(
             dptree::entry()
