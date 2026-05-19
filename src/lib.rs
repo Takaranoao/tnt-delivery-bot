@@ -3,7 +3,7 @@ pub mod config;
 pub mod db;
 pub mod fetch;
 pub mod model;
-// pub mod notify;
+pub mod notify;
 pub mod schedule;
 // pub mod tick;
 pub mod token_parse;
