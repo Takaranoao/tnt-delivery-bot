@@ -31,9 +31,9 @@ impl TeloxideNotifier {
 #[async_trait]
 impl Notifier for TeloxideNotifier {
     async fn send(&self, chat_id: i64, text: &str) -> Result<(), NotifyError> {
-        use teloxide::prelude::*;
         use teloxide::ApiError;
         use teloxide::RequestError;
+        use teloxide::prelude::*;
         match self
             .bot
             .send_message(teloxide::types::ChatId(chat_id), text)

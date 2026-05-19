@@ -1,4 +1,4 @@
-use tnt_delivery_bot::db::{spawn_db_actor, AddResult, UnsubResult};
+use tnt_delivery_bot::db::{AddResult, UnsubResult, spawn_db_actor};
 
 fn tmp_db() -> (tempfile::TempDir, String) {
     let dir = tempfile::tempdir().unwrap();

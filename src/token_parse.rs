@@ -3,10 +3,8 @@ use std::sync::LazyLock;
 
 static RE_QUERY: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"[?&]token=([A-Za-z0-9]+)").unwrap());
-static RE_HASH: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"#/([A-Za-z0-9]+)").unwrap());
-static RE_BARE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^[A-Za-z0-9]{4,32}$").unwrap());
+static RE_HASH: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"#/([A-Za-z0-9]+)").unwrap());
+static RE_BARE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[A-Za-z0-9]{4,32}$").unwrap());
 
 /// Extract a T&T token from a user message. Order: `?token=` / `&token=`,
 /// then `#/<token>`, then a whole trimmed bare token.
@@ -31,7 +29,10 @@ mod tests {
     #[test]
     fn bare_token() {
         assert_eq!(parse_token("3abc128856").as_deref(), Some("3abc128856"));
-        assert_eq!(parse_token("  3abc128856 \n").as_deref(), Some("3abc128856"));
+        assert_eq!(
+            parse_token("  3abc128856 \n").as_deref(),
+            Some("3abc128856")
+        );
     }
 
     #[test]

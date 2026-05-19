@@ -76,13 +76,8 @@ pub async fn run_tick_round(
                                 .unwrap_or(&row.token)
                                 .to_string();
                             let msg = render_changes(&order_id, &changes);
-                            for (uid, chat) in
-                                db.subscribers(row.token.clone()).await?
-                            {
-                                notify_or_cleanup(
-                                    notifier, db, &row.token, uid, chat, &msg,
-                                )
-                                .await;
+                            for (uid, chat) in db.subscribers(row.token.clone()).await? {
+                                notify_or_cleanup(notifier, db, &row.token, uid, chat, &msg).await;
                             }
                         }
                         db.record_poll_success(row.token.clone(), result_str, now)
@@ -109,8 +104,7 @@ pub async fn run_tick_round(
             _ => {
                 let fc = db.record_poll_failure(row.token.clone(), now).await?;
                 if fc >= cfg.max_fetch_failures {
-                    let msg =
-                        format!("❌ {} 持续查询失败，已停止追踪", row.token);
+                    let msg = format!("❌ {} 持续查询失败，已停止追踪", row.token);
                     for (uid, chat) in db.subscribers(row.token.clone()).await? {
                         let _ = notifier.send(chat, &msg).await;
                         let _ = uid;

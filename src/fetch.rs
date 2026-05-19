@@ -15,8 +15,7 @@ pub struct ReqwestFetcher {
 
 impl ReqwestFetcher {
     pub fn new(cfg: &Config) -> Result<Self> {
-        let mut builder = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(15));
+        let mut builder = reqwest::Client::builder().timeout(std::time::Duration::from_secs(15));
         if let Some(proxy) = &cfg.http_proxy {
             builder = builder.proxy(reqwest::Proxy::all(proxy)?);
         }
@@ -54,7 +53,9 @@ pub mod fake {
 
     impl FakeFetcher {
         pub fn new() -> Self {
-            Self { responses: Mutex::new(HashMap::new()) }
+            Self {
+                responses: Mutex::new(HashMap::new()),
+            }
         }
         pub fn push_ok(&self, token: &str, json: &str) {
             let r = serde_json::from_str::<ApiResponse>(json).unwrap();

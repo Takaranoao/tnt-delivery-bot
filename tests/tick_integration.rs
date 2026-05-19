@@ -45,7 +45,9 @@ async fn first_snapshot_then_change_is_pushed() {
     let db = spawn_db_actor(&path).unwrap();
     let c = cfg();
     let rand = 7;
-    db.add_subscription(1, 1, "tok".into(), rand, recent()).await.unwrap();
+    db.add_subscription(1, 1, "tok".into(), rand, recent())
+        .await
+        .unwrap();
 
     let fetcher = FakeFetcher::new();
     let notifier = FakeNotifier::new();
@@ -56,7 +58,9 @@ async fn first_snapshot_then_change_is_pushed() {
         "tok",
         r#"{"err":0,"result":{"order_id":"OID","status":"PROCESS"}}"#,
     );
-    run_tick_round(t, &c, &db, &fetcher, &notifier).await.unwrap();
+    run_tick_round(t, &c, &db, &fetcher, &notifier)
+        .await
+        .unwrap();
     assert!(notifier.sent.lock().unwrap().is_empty());
 
     // Second poll: status changes → push to subscriber.
@@ -79,13 +83,17 @@ async fn repeated_failures_purge_and_notify() {
     let db = spawn_db_actor(&path).unwrap();
     let c = cfg(); // max_fetch_failures = 2
     let rand = 3;
-    db.add_subscription(5, 5, "bad".into(), rand, recent()).await.unwrap();
+    db.add_subscription(5, 5, "bad".into(), rand, recent())
+        .await
+        .unwrap();
     let fetcher = FakeFetcher::new();
     let notifier = FakeNotifier::new();
     let t = due_tick("bad", rand, c.poll_period_ticks);
 
     fetcher.push_err("bad", "boom");
-    run_tick_round(t, &c, &db, &fetcher, &notifier).await.unwrap();
+    run_tick_round(t, &c, &db, &fetcher, &notifier)
+        .await
+        .unwrap();
     assert!(notifier.sent.lock().unwrap().is_empty()); // 1st failure: silent
 
     fetcher.push_err("bad", "boom");
@@ -140,7 +148,9 @@ async fn completed_status_notifies_and_purges() {
         "done",
         r#"{"err":0,"result":{"order_id":"OID","status":"PROCESS"}}"#,
     );
-    run_tick_round(t, &c, &db, &fetcher, &notifier).await.unwrap();
+    run_tick_round(t, &c, &db, &fetcher, &notifier)
+        .await
+        .unwrap();
     assert!(notifier.sent.lock().unwrap().is_empty());
 
     // Next poll: status -> COMPLETED. Expect the change push AND a
