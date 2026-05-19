@@ -26,6 +26,10 @@ pretty_assertions = "1"
 tempfile = "3"
 tokio = { version = "1", features = ["test-util", "macros", "rt-multi-thread"] }
 
+[lib]
+name = "tnt_delivery_bot"
+path = "src/lib.rs"
+
 [[bin]]
 name = "tnt-delivery-bot"
 path = "src/main.rs"
