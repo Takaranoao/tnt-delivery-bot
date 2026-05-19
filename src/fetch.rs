@@ -51,6 +51,12 @@ pub mod fake {
         pub responses: Mutex<HashMap<String, Vec<Result<ApiResponse, String>>>>,
     }
 
+    impl Default for FakeFetcher {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl FakeFetcher {
         pub fn new() -> Self {
             Self {

@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use tnt_delivery_bot::config::Config;
 use tnt_delivery_bot::db::spawn_db_actor;
 use tnt_delivery_bot::fetch::fake::FakeFetcher;
@@ -100,10 +99,11 @@ async fn repeated_failures_purge_and_notify() {
     run_tick_round(t + c.poll_period_ticks, &c, &db, &fetcher, &notifier)
         .await
         .unwrap();
-    let sent = notifier.sent.lock().unwrap();
-    assert_eq!(sent.len(), 1);
-    assert!(sent[0].1.contains("持续查询失败"));
-    drop(sent);
+    {
+        let sent = notifier.sent.lock().unwrap();
+        assert_eq!(sent.len(), 1);
+        assert!(sent[0].1.contains("持续查询失败"));
+    }
     assert!(db.due_tokens().await.unwrap().is_empty()); // purged
 }
 

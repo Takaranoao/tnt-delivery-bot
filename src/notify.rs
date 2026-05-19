@@ -59,6 +59,12 @@ pub mod fake {
         pub forbidden_chats: Mutex<Vec<i64>>,
     }
 
+    impl Default for FakeNotifier {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
     impl FakeNotifier {
         pub fn new() -> Self {
             Self {
