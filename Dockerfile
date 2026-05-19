@@ -25,9 +25,16 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # ---- runtime ---------------------------------------------------------------
 FROM debian:bookworm-slim AS runtime
 
+# gosu: the entrypoint must start as root to chown the root-owned bind
+# mount, then drop to the non-root user before exec'ing the bot.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates \
+ && apt-get install -y --no-install-recommends ca-certificates gosu \
  && rm -rf /var/lib/apt/lists/*
+
+# Non-privileged runtime user (fixed uid/gid for predictable bind-mount
+# ownership on the host).
+RUN groupadd --gid 10001 app \
+ && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin app
 
 WORKDIR /app
 
@@ -35,8 +42,8 @@ COPY --from=builder /usr/local/bin/tnt-delivery-bot /usr/local/bin/tnt-delivery-
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# DB_PATH (compose sets /app/data/tnt-delivery-bot.sqlite) is resolved by
-# rusqlite Connection::open, which creates the file but NOT the parent dir.
-# The data volume is mounted at /app/data and the entrypoint mkdir -p's the
-# DB dir, so the bot read/writes the bind-mounted ./data.
+# No USER directive: the entrypoint intentionally runs as root only long
+# enough to mkdir -p + chown the bind-mounted DB dir (compose sets DB_PATH
+# /app/data/...; rusqlite Connection::open creates the file but NOT the
+# parent dir), then `gosu app` drops privileges and exec's the bot.
 ENTRYPOINT ["docker-entrypoint.sh"]

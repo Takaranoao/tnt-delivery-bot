@@ -35,10 +35,19 @@ ps: ## 容器状态
 shell: ## 进容器 bash（shell 级排查）
 	$(COMPOSE) exec $(SERVICE) bash
 
-backup: ## 备份 data/ 到 backups/
+backup: ## 备份 DB 到 backups/(有 sqlite3 用在线 .backup, 否则 tar 整个 data/)
 	@mkdir -p backups
-	tar czf backups/tnt-delivery-bot-data-$$(date +%Y%m%d-%H%M%S).tar.gz data
-	@echo "已备份到 backups/ (强一致可先 make down 再 backup)"
+	@ts=$$(date +%Y%m%d-%H%M%S); db=data/tnt-delivery-bot.sqlite; \
+	if command -v sqlite3 >/dev/null 2>&1 && [ -f "$$db" ]; then \
+		out="backups/tnt-delivery-bot-$$ts.sqlite"; \
+		if sqlite3 "$$db" ".backup '$$out'"; then \
+			gzip -f "$$out"; echo "在线一致备份: $$out.gz"; \
+		else rm -f "$$out"; echo "sqlite3 .backup 失败" >&2; exit 1; fi; \
+	else \
+		echo "未找到 sqlite3 或 DB 文件: 退回 tar 整个 data/ (运行中可能不一致, 强一致请先 make down)" >&2; \
+		tar czf "backups/tnt-delivery-bot-data-$$ts.tar.gz" data && \
+		echo "tar 备份: backups/tnt-delivery-bot-data-$$ts.tar.gz"; \
+	fi
 
 check: ## 本地 cargo 门禁(可选, 需本机 Rust)
 	cargo fmt --all --check
