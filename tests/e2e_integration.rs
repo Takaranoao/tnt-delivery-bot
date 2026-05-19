@@ -97,7 +97,8 @@ async fn join_poll_diff_unsubscribe_end_to_end() {
     assert!(!db.is_subscribed(1, "TK".into()).await.unwrap());
     assert!(db.is_subscribed(2, "TK".into()).await.unwrap());
 
-    // Next due tick, DELIVERED -> COMPLETED: only user 2 (chat 1002) notified.
+    // Next due tick, DELIVERED -> COMPLETED: user 2 gets the change push AND
+    // the "completed, tracking stopped" notice; then the token is purged.
     let notifier2 = FakeNotifier::new();
     fetcher.push_ok(
         "TK",
@@ -108,10 +109,16 @@ async fn join_poll_diff_unsubscribe_end_to_end() {
         .unwrap();
     {
         let sent = notifier2.sent.lock().unwrap();
-        assert_eq!(sent.len(), 1);
-        assert_eq!(sent[0].0, 1002);
+        assert_eq!(sent.len(), 2);
+        assert!(sent.iter().all(|(ch, _)| *ch == 1002));
         assert!(sent[0].1.contains("状态: DELIVERED → COMPLETED"));
+        assert!(sent[1].1.contains("已完成") && sent[1].1.contains("停止追踪"));
     }
+    assert!(
+        db.due_tokens().await.unwrap().is_empty(),
+        "token purged after COMPLETED"
+    );
+    assert!(!db.is_subscribed(2, "TK".into()).await.unwrap());
 }
 
 /// Join while the API is failing still subscribes; repeated failures across

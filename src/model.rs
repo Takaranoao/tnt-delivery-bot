@@ -24,6 +24,13 @@ pub fn is_unknown_status(result: &Value) -> bool {
         .unwrap_or(false)
 }
 
+/// True if the status equals "COMPLETED" (case-insensitive).
+pub fn is_completed_status(result: &Value) -> bool {
+    status_of(result)
+        .map(|s| s.eq_ignore_ascii_case("COMPLETED"))
+        .unwrap_or(false)
+}
+
 pub fn label(key: &str) -> &str {
     match key {
         "order_id" => "订单号",
@@ -139,6 +146,14 @@ mod tests {
         assert!(is_unknown_status(&json!({"status": "unknown"})));
         assert!(!is_unknown_status(&json!({"status": "PROCESS"})));
         assert!(!is_unknown_status(&json!({})));
+    }
+
+    #[test]
+    fn completed_detection_case_insensitive() {
+        assert!(is_completed_status(&json!({"status": "COMPLETED"})));
+        assert!(is_completed_status(&json!({"status": "completed"})));
+        assert!(!is_completed_status(&json!({"status": "DELIVERED"})));
+        assert!(!is_completed_status(&json!({})));
     }
 
     #[test]

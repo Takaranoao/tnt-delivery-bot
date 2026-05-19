@@ -22,4 +22,5 @@ cargo run --release
 ```
 
 token 最多保留 24h(任何人再次发送即续期);加入时若订单状态为 `UNKNOWN` 则不加入并提示;
+订单状态变为 `COMPLETED` 时,推送本次变化后自动停止追踪并通知(加入时若已是 `COMPLETED` 则不加入并提示);
 连续查询失败 `MAX_FETCH_FAILURES` 次后自动停止并通知。

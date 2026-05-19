@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::db::{AddResult, DbHandle, UnsubResult};
 use crate::fetch::ApiFetcher;
-use crate::model::{is_unknown_status, render_status, render_summary};
+use crate::model::{is_completed_status, is_unknown_status, render_status, render_summary};
 use crate::token_parse::parse_token;
 use std::sync::Arc;
 use teloxide::prelude::*;
@@ -56,6 +56,13 @@ pub async fn handle_token(
                     return format!("你已在追踪，当前状态如下\n{}", render_status(&result));
                 }
                 return "⚠️ 该订单当前状态为 UNKNOWN(可能 token 无效或订单尚未生成)，未加入追踪;请确认 token 或稍后重试".to_string();
+            }
+            if is_completed_status(&result) {
+                let oid = result
+                    .get("order_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(token);
+                return format!("✅ 订单 {oid} 已完成（状态: COMPLETED），未加入追踪");
             }
             match state
                 .db
@@ -210,6 +217,17 @@ mod tests {
         f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"UNKNOWN"}}"#);
         let st = state(f);
         let reply = handle_token(&st, 1, 1, "tok").await;
+        assert!(reply.contains("未加入追踪"));
+        assert!(!st.db.is_subscribed(1, "tok".into()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn completed_status_is_rejected_when_not_subscribed() {
+        let f = FakeFetcher::new();
+        f.push_ok("tok", r#"{"err":0,"result":{"order_id":"O","status":"COMPLETED"}}"#);
+        let st = state(f);
+        let reply = handle_token(&st, 1, 1, "tok").await;
+        assert!(reply.contains("已完成"));
         assert!(reply.contains("未加入追踪"));
         assert!(!st.db.is_subscribed(1, "tok".into()).await.unwrap());
     }

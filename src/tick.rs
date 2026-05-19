@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::db::DbHandle;
 use crate::fetch::ApiFetcher;
-use crate::model::{diff_snapshots, render_changes};
+use crate::model::{diff_snapshots, is_completed_status, render_changes};
 use crate::notify::{Notifier, NotifyError};
 use crate::schedule::is_due;
 use anyhow::Result;
@@ -88,6 +88,21 @@ pub async fn run_tick_round(
                         db.record_poll_success(row.token.clone(), result_str, now)
                             .await?;
                     }
+                }
+                // Order completed → push already done above; now notify all
+                // subscribers it's finished and stop tracking (purge token).
+                if is_completed_status(&result) {
+                    let order_id = result
+                        .get("order_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(&row.token)
+                        .to_string();
+                    let msg = format!("✅ 订单 {order_id} 已完成，停止追踪");
+                    for (uid, chat) in db.subscribers(row.token.clone()).await? {
+                        let _ = notifier.send(chat, &msg).await;
+                        let _ = uid;
+                    }
+                    db.purge_token(row.token.clone()).await?;
                 }
             }
             // err != 0, or result missing, or transport error → a failure.

@@ -121,3 +121,46 @@ async fn expiry_notifies_all_subscribers() {
     assert_eq!(sent.len(), 2);
     assert!(sent.iter().all(|(_, m)| m.contains("停止追踪")));
 }
+
+#[tokio::test]
+async fn completed_status_notifies_and_purges() {
+    let (_d, path) = tmp_path();
+    let db = spawn_db_actor(&path).unwrap();
+    let c = cfg();
+    let rand = 9;
+    db.add_subscription(1, 1, "done".into(), rand, recent())
+        .await
+        .unwrap();
+    let fetcher = FakeFetcher::new();
+    let notifier = FakeNotifier::new();
+    let t = due_tick("done", rand, c.poll_period_ticks);
+
+    // First poll stores the snapshot (PROCESS); no notification.
+    fetcher.push_ok(
+        "done",
+        r#"{"err":0,"result":{"order_id":"OID","status":"PROCESS"}}"#,
+    );
+    run_tick_round(t, &c, &db, &fetcher, &notifier).await.unwrap();
+    assert!(notifier.sent.lock().unwrap().is_empty());
+
+    // Next poll: status -> COMPLETED. Expect the change push AND a
+    // "completed, tracking stopped" notice, then the token purged.
+    fetcher.push_ok(
+        "done",
+        r#"{"err":0,"result":{"order_id":"OID","status":"COMPLETED"}}"#,
+    );
+    run_tick_round(t + c.poll_period_ticks, &c, &db, &fetcher, &notifier)
+        .await
+        .unwrap();
+    {
+        let sent = notifier.sent.lock().unwrap();
+        assert_eq!(sent.len(), 2, "change push + completed notice");
+        assert!(sent[0].1.contains("状态: PROCESS → COMPLETED"));
+        assert!(sent[1].1.contains("已完成") && sent[1].1.contains("停止追踪"));
+        assert!(sent.iter().all(|(ch, _)| *ch == 1));
+    }
+    assert!(
+        db.due_tokens().await.unwrap().is_empty(),
+        "token purged after COMPLETED"
+    );
+}
