@@ -33,7 +33,7 @@ make logs      # 跟随日志
 make down      # 优雅停止(SIGTERM, ≤30s)
 ```
 
-数据持久化在 `./data/`（SQLite）；容器以非 root 运行，`./data` 在宿主上
+数据持久化在 `./data/`（SQLite + WAL）；容器以非 root 运行，`./data` 在宿主上
 属主会被设为 uid `10001`。`make backup` 输出到 `backups/`（宿主有 `sqlite3` 时
 走在线一致备份，否则 tar）；`make help` 看全部目标。
 

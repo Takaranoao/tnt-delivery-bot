@@ -384,7 +384,11 @@ fn handle(conn: &Connection, cmd: DbCmd) {
 /// Open the DB, run migrations, spawn the actor task. Returns a cloneable handle.
 pub fn spawn_db_actor(db_path: &str) -> Result<DbHandle> {
     let conn = Connection::open(db_path)?;
-    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    // journal_mode is persisted in the DB header, so this single startup
+    // connection sets WAL once for the file. WAL keeps the DB consistent
+    // for hot copies / `sqlite3 .backup` and survives crashes better.
+    // (execute_batch uses sqlite3_exec, which discards the row WAL returns.)
+    conn.execute_batch("PRAGMA journal_mode = WAL;\nPRAGMA foreign_keys = ON;")?;
     conn.execute_batch(MIGRATION)?;
     let (tx, mut rx) = mpsc::channel::<DbCmd>(256);
     tokio::spawn(async move {
