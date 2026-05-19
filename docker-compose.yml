@@ -1,0 +1,25 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tnt-delivery-bot:local
+    container_name: tnt-delivery-bot
+    env_file:
+      - .env
+    # Overrides DB_PATH from .env (environment > env_file) so the DB always
+    # lands in the bind-mounted volume regardless of the local .env value.
+    environment:
+      DB_PATH: /app/data/tnt-delivery-bot.sqlite
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    # src/main.rs handles SIGTERM (and SIGINT), so `docker stop`'s default
+    # SIGTERM triggers the graceful shutdown — no stop_signal override needed.
+    # Grace period covers the teloxide dispatcher + tick loop drain.
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

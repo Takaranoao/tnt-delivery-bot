@@ -15,11 +15,26 @@
 
 ## 运行
 
+### 本地
+
 ```bash
 cp .env.example .env
 $EDITOR .env   # 至少填 BOT_TOKEN
 cargo run --release
 ```
+
+### Docker
+
+```bash
+cp .env.example .env
+$EDITOR .env   # 至少填 BOT_TOKEN
+make up        # 构建并后台长驻
+make logs      # 跟随日志
+make down      # 优雅停止(SIGTERM, ≤30s)
+```
+
+数据持久化在 `./data/`（SQLite + WAL）；`make backup` 打包到 `backups/`；
+`make help` 看全部目标。
 
 token 最多保留 24h(任何人再次发送即续期);加入时若订单状态为 `UNKNOWN` 则不加入并提示;
 订单状态变为 `COMPLETED` 时,推送本次变化后自动停止追踪并通知(加入时若已是 `COMPLETED` 则不加入并提示);
