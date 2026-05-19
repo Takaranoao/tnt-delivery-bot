@@ -1,0 +1,26 @@
+# tnt-delivery-bot
+
+大统华(T&T)配送通知 Telegram 机器人。发 token 或追踪链接给它,订单字段变化时推送给你。
+
+## 用法
+
+发给机器人下列任一形式即可开始追踪同一订单:
+
+- `3abc128856`
+- `https://tmstracking.tntsupermarket.us/#/3abc128856`
+- `https://tmsapi.tntsupermarket.us/track/customer?token=3abc128856`
+- `Your T&T order 000039752 is on the way. https://tmstracking.tntsupermarket.us/#/3abc128856 [Do Not Reply]`
+
+命令: `/list` 查看在追订单 · `/stop <token>` 停止追踪 · `/help`
+
+## 运行
+
+```bash
+cp .env.example .env
+$EDITOR .env   # 至少填 BOT_TOKEN
+cargo run --release
+```
+
+token 最多保留 24h(任何人再次发送即续期);加入时若订单状态为 `UNKNOWN` 则不加入并提示;
+订单状态变为 `COMPLETED` 时,推送本次变化后自动停止追踪并通知(加入时若已是 `COMPLETED` 则不加入并提示);
+连续查询失败 `MAX_FETCH_FAILURES` 次后自动停止并通知。
