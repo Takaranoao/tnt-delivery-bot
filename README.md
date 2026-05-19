@@ -9,7 +9,7 @@
 - `3abc126`
 - `https://tmstracking.tntsupermarket.us/#/3abc156`
 - `https://tmsapi.tntsupermarket.us/track/customer?token=3abc856`
-- `Your T&T order 000039752 is on the way. https://tmstracking.tntsupermarket.us/#/3a28856 [Do Not Reply]`
+- `Your T&T order 0000752 is on the way. https://tmstracking.tntsupermarket.us/#/3a28856 [Do Not Reply]`
 
 命令: `/list` 查看在追订单 · `/stop <token>` 停止追踪 · `/help`
 
